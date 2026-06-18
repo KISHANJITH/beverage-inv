@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bar Inventory Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#0c0e14; --bg2:#13161f; --bg3:#1a1e2b; --bg4:#1f2435;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2; --text2:#7c849e; --text3:#464f6a;
+  --accent:#4f8ef7; --accent-bg:rgba(79,142,247,0.13);
+  --bar:#4f8ef7; --bar-bg:rgba(79,142,247,0.13);
+  --floor:#b07cf7; --floor-bg:rgba(176,124,247,0.14);
+  --green:#3ecf8e; --green-bg:rgba(62,207,142,0.13);
+  --amber:#f5a623; --amber-bg:rgba(245,166,35,0.13);
+  --red:#f26464; --red-bg:rgba(242,100,100,0.13);
+  --radius:10px; --radius-lg:14px; --shadow:0 2px 12px rgba(0,0,0,0.4);
+}
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+.app-header { background:var(--bg2); border-bottom:1px solid var(--border); padding:14px 20px; position:sticky; top:0; z-index:200; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.header-left h1 { font-size:16px; font-weight:600; letter-spacing:-0.3px; }
+.header-left p { font-size:11px; color:var(--text2); margin-top:2px; }
+.header-right { display:flex; gap:8px; align-items:center; flex-shrink:0; }
+
+#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#2a3044; border:1px solid var(--border2); border-radius:var(--radius); padding:10px 20px; font-size:13px; color:var(--text); z-index:999; transition:transform 0.3s cubic-bezier(0.4,0,0.2,1); pointer-events:none; white-space:nowrap; box-shadow:var(--shadow); max-width:90vw; }
+#toast.show { transform:translateX(-50%) translateY(0); }
+
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:500; display:flex; align-items:center; justify-content:center; padding:20px; opacity:0; pointer-events:none; transition:opacity 0.2s; }
+.modal-overlay.open { opacity:1; pointer-events:all; }
+.modal { background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius-lg); padding:24px; max-width:380px; width:100%; box-shadow:var(--shadow); transform:scale(0.95); transition:transform 0.2s; }
+.modal-overlay.open .modal { transform:scale(1); }
+.modal h3 { font-size:16px; font-weight:600; margin-bottom:8px; }
+.modal p { font-size:13px; color:var(--text2); margin-bottom:20px; line-height:1.5; }
+.modal-btns { display:flex; gap:8px; justify-content:flex-end; }
+
+.shop-row { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:var(--bg3); border-radius:var(--radius); margin-bottom:6px; }
+.shop-name { font-size:13px; font-weight:600; }
+.shop-cat { font-size:10px; color:var(--text3); }
+.shop-levels { display:flex; gap:8px; align-items:center; }
+.shop-tag { font-size:10px; font-weight:600; padding:2px 7px; border-radius:12px; font-family:'DM Mono',monospace; white-space:nowrap; }
+.shop-tag.bar { background:var(--bar-bg); color:var(--bar); }
+.shop-tag.floor { background:var(--floor-bg); color:var(--floor); }
+.shop-empty { text-align:center; padding:24px; color:var(--green); font-size:13px; }
+
+.main { max-width:920px; margin:0 auto; padding:20px 16px 80px; }
+
+/* SUMMARY - two location columns */
+.loc-summary { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+.loc-panel { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px 16px; }
+.loc-panel.bar { border-top:3px solid var(--bar); }
+.loc-panel.floor { border-top:3px solid var(--floor); }
+.loc-title { font-size:13px; font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:7px; }
+.loc-dot { width:10px; height:10px; border-radius:50%; }
+.loc-dot.bar { background:var(--bar); }
+.loc-dot.floor { background:var(--floor); }
+.loc-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.mini-stat { }
+.mini-label { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; }
+.mini-val { font-size:18px; font-weight:600; font-family:'DM Mono',monospace; }
+
+.controls { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+.search-wrap { flex:1; min-width:160px; position:relative; }
+.search-wrap input { padding-right:32px; width:100%; }
+.search-clear { position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text3); cursor:pointer; font-size:14px; display:none; line-height:1; padding:2px; }
+.search-clear.visible { display:block; }
+.search-clear:hover { color:var(--text); }
+input, select { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px; padding:8px 12px; height:38px; width:100%; outline:none; transition:border-color 0.15s; }
+input:focus, select:focus { border-color:var(--accent); }
+input::placeholder { color:var(--text3); }
+select option { background:#1a1e2b; }
+label { font-size:11px; color:var(--text2); display:block; margin-bottom:4px; }
+.btn { background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius); color:var(--text); font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; padding:0 14px; height:38px; cursor:pointer; white-space:nowrap; transition:all 0.15s; display:inline-flex; align-items:center; gap:6px; }
+.btn:hover { background:var(--bg3); border-color:var(--border2); }
+.btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn-primary:hover { background:#3a7de8; }
+.btn-amber { background:var(--amber-bg); border-color:var(--amber); color:var(--amber); }
+.btn-amber:hover { background:var(--amber); color:#fff; }
+.btn-danger { background:var(--red-bg); border-color:var(--red); color:var(--red); }
+.btn-danger:hover { background:var(--red); color:#fff; }
+.btn-sm { height:32px; font-size:12px; padding:0 10px; }
+
+.add-panel { background:var(--bg2); border:1px solid var(--accent); border-radius:var(--radius-lg); padding:16px; margin-bottom:16px; display:none; }
+.add-panel.open { display:block; }
+.add-grid { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; margin-bottom:10px; }
+.add-footer { display:flex; gap:8px; align-items:flex-end; }
+.add-footer .cat-wrap { flex:1; }
+
+.cat-controls { display:flex; gap:8px; margin-bottom:4px; }
+.text-btn { background:none; border:none; color:var(--text2); cursor:pointer; font-size:11px; font-family:'DM Sans',sans-serif; padding:4px 8px; border-radius:6px; transition:all 0.15s; }
+.text-btn:hover { background:var(--bg3); color:var(--text); }
+
+.section-divider { font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.1em; margin:20px 0 8px; padding-bottom:6px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; }
+.section-divider:hover { color:var(--text2); }
+.section-divider .right { display:flex; align-items:center; gap:10px; }
+.section-divider .count { font-weight:400; }
+.section-divider .chevron { font-size:12px; transition:transform 0.2s; }
+.section-divider.collapsed .chevron { transform:rotate(-90deg); }
+
+.bottles-grid { display:flex; flex-direction:column; gap:8px; }
+.bottles-grid.collapsed { display:none; }
+.bottle-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; transition:border-color 0.2s; }
+.bottle-card:hover { border-color:var(--border2); }
+
+.card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.bottle-name { font-size:13px; font-weight:600; color:var(--text); }
+.bottle-meta { font-size:11px; color:var(--text3); margin-top:1px; }
+
+.loc-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+.loc-cell { background:var(--bg3); border-radius:var(--radius); padding:10px; border:1px solid transparent; }
+.loc-cell.bar { border-left:3px solid var(--bar); }
+.loc-cell.floor { border-left:3px solid var(--floor); }
+.loc-cell-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:6px; }
+.loc-cell-name { font-size:11px; font-weight:600; color:var(--text2); display:flex; align-items:center; gap:5px; flex-shrink:0; }
+.loc-total-badge { font-size:11px; font-weight:600; font-family:'DM Mono',monospace; padding:3px 9px; border-radius:20px; white-space:nowrap; flex-shrink:0; }
+.loc-total-badge.bar { background:var(--bar-bg); color:var(--bar); }
+.loc-total-badge.floor { background:var(--floor-bg); color:var(--floor); }
+.loc-total-badge.hide { display:none; }
+
+.cell-inputs { display:flex; align-items:flex-end; gap:8px; }
+.cell-inputs .input-group { display:flex; flex-direction:column; gap:3px; }
+.cell-inputs input.weight { width:88px; height:44px; font-size:15px; }
+.cell-inputs label { font-size:10px; }
+.fill-readout { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:42px; }
+.fill-num { font-size:14px; font-weight:600; font-family:'DM Mono',monospace; }
+.fill-word { font-size:9px; color:var(--text3); }
+.full-counter { display:flex; align-items:center; gap:6px; }
+.qty-btn { width:34px; height:34px; border-radius:50%; border:1px solid var(--border2); background:var(--bg2); color:var(--text); cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; transition:all 0.15s; line-height:1; flex-shrink:0; -webkit-tap-highlight-color:transparent; }
+.qty-btn:hover { background:var(--accent-bg); border-color:var(--accent); color:var(--accent); }
+.qty-btn:active { transform:scale(0.9); }
+.qty-num { font-size:14px; font-weight:600; min-width:20px; text-align:center; font-family:'DM Mono',monospace; }
+
+.del-btn { background:none; border:none; cursor:pointer; color:var(--text3); font-size:15px; padding:6px; border-radius:8px; transition:all 0.15s; }
+.del-btn:hover { background:var(--red-bg); color:var(--red); }
+
+.empty { text-align:center; padding:48px 20px; color:var(--text3); font-size:14px; border:1px dashed var(--border); border-radius:var(--radius-lg); }
+.empty-icon { font-size:32px; margin-bottom:8px; }
+
+#scroll-top { position:fixed; bottom:24px; right:24px; width:44px; height:44px; border-radius:50%; background:var(--accent); border:none; color:#fff; font-size:20px; cursor:pointer; z-index:300; box-shadow:var(--shadow); opacity:0; pointer-events:none; transition:all 0.25s; transform:translateY(10px); display:flex; align-items:center; justify-content:center; }
+#scroll-top.show { opacity:1; pointer-events:all; transform:translateY(0); }
+#scroll-top:hover { background:#3a7de8; }
+
+@media print {
+  .app-header .header-right, .controls, .add-panel, .del-btn, .qty-btn, .cat-controls, #scroll-top { display:none !important; }
+  .bottle-card { break-inside:avoid; border:1px solid #ccc !important; }
+  body { background:#fff; color:#000; }
+}
+@media(max-width:640px){
+  .loc-summary { grid-template-columns:1fr; }
+  .add-grid { grid-template-columns:1fr 1fr; }
+  .loc-row { grid-template-columns:1fr; }
+  .cell-inputs input.weight { width:80px; height:44px; }
+  .app-header { flex-wrap:wrap; }
+  .header-right { width:100%; justify-content:flex-end; }
+}
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">Are you sure?</h3>
+    <p id="modal-body">This action cannot be undone.</p>
+    <div class="modal-btns">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="shop-overlay">
+  <div class="modal" style="max-width:440px;">
+    <h3>🛒 Reorder List</h3>
+    <p style="margin-bottom:14px;">Bottles below 25% in either location.</p>
+    <div id="shop-list" style="max-height:50vh;overflow-y:auto;margin-bottom:18px;"></div>
+    <div class="modal-btns">
+      <button class="btn" onclick="copyShoppingList()">📋 Copy</button>
+      <button class="btn btn-primary" onclick="closeShopModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="app-header">
+  <div class="header-left">
+    <h1>🍾 Bar Inventory Tracker</h1>
+    <p id="last-saved-label">No data saved yet</p>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-sm" onclick="showShoppingList()" title="Low stock shopping list">🛒 Reorder</button>
+    <button class="btn btn-sm" onclick="exportCSV()" title="Export to CSV">📊 Export</button>
+    <button class="btn btn-sm" onclick="window.print()" title="Print">🖨 Print</button>
+    <button class="btn btn-sm btn-amber" onclick="confirmReset()" title="Clear all counts">🔄 New Count</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- TWO LOCATION SUMMARY -->
+  <div class="loc-summary">
+    <div class="loc-panel bar">
+      <div class="loc-title"><span class="loc-dot bar"></span> Bar</div>
+      <div class="loc-stats">
+        <div class="mini-stat"><div class="mini-label">Weighed</div><div class="mini-val" id="bar-weighed">0</div></div>
+        <div class="mini-stat"><div class="mini-label">Low / Empty</div><div class="mini-val" id="bar-low" style="color:var(--amber)">0</div></div>
+        <div class="mini-stat"><div class="mini-label">Full stored</div><div class="mini-val" id="bar-full" style="color:var(--green)">0</div></div>
+      </div>
+    </div>
+    <div class="loc-panel floor">
+      <div class="loc-title"><span class="loc-dot floor"></span> 3rd Floor</div>
+      <div class="loc-stats">
+        <div class="mini-stat"><div class="mini-label">Weighed</div><div class="mini-val" id="floor-weighed">0</div></div>
+        <div class="mini-stat"><div class="mini-label">Low / Empty</div><div class="mini-val" id="floor-low" style="color:var(--amber)">0</div></div>
+        <div class="mini-stat"><div class="mini-label">Full stored</div><div class="mini-val" id="floor-full" style="color:var(--green)">0</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="search-wrap">
+      <input type="text" id="search" placeholder="🔍  Search bottles..." oninput="onSearch()" />
+      <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
+    </div>
+    <select id="filter-cat" onchange="render()" style="width:auto;min-width:145px;">
+      <option value="">All categories</option>
+      <option>40 oz Bottles</option><option>Rum</option><option>Gin</option><option>Irish Whiskey</option>
+      <option>Liqueur</option><option>Rye Whiskey</option><option>Scotch</option>
+      <option>Sherry &amp; Port</option><option>Tequila</option><option>Vermouth</option><option>Vodka</option>
+    </select>
+    <button class="btn btn-primary" onclick="toggleAdd()">+ Add bottle</button>
+  </div>
+
+  <div class="add-panel" id="add-panel">
+    <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--accent);">➕ Add new bottle (appears in both locations)</div>
+    <div class="add-grid">
+      <div><label>Bottle name</label><input type="text" id="inp-name" placeholder="e.g. Hendricks" /></div>
+      <div><label>Size (oz)</label><input type="number" id="inp-size" placeholder="26" min="1" step="0.1" /></div>
+      <div><label>Empty weight (oz)</label><input type="number" id="inp-tare" placeholder="0.0" min="0" step="0.1" /></div>
+    </div>
+    <div class="add-footer">
+      <div class="cat-wrap"><label>Category</label>
+        <select id="inp-cat">
+          <option>40 oz Bottles</option><option>Rum</option><option>Gin</option><option>Irish Whiskey</option>
+          <option>Liqueur</option><option>Rye Whiskey</option><option>Scotch</option>
+          <option>Sherry &amp; Port</option><option>Tequila</option><option>Vermouth</option><option>Vodka</option><option>Other</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="addBottle()">Add</button>
+      <button class="btn" onclick="toggleAdd()">Cancel</button>
+    </div>
+  </div>
+
+  <div class="cat-controls">
+    <button class="text-btn" onclick="setAllCollapsed(false)">⊕ Expand all</button>
+    <button class="text-btn" onclick="setAllCollapsed(true)">⊖ Collapse all</button>
+  </div>
+
+  <div id="bottles-container"></div>
+</div>
+
+<button id="scroll-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
+
+<script>
+const CAT_ORDER=["40 oz Bottles","Rum","Gin","Irish Whiskey","Liqueur","Rye Whiskey","Scotch","Sherry & Port","Tequila","Vermouth","Vodka","Other"];
+const LOCS=[{key:'bar',label:'Bar'},{key:'floor',label:'3rd Floor'}];
+
+const PRELOADED=[
+  {cat:"40 oz Bottles",size:40,name:"St. Remy",tare:18.5},
+  {cat:"40 oz Bottles",size:40,name:"Canadian Club",tare:21.6},
+  {cat:"40 oz Bottles",size:40,name:"Forty Creek",tare:23.6},
+  {cat:"40 oz Bottles",size:40,name:"Captain Morgan Dark",tare:22},
+  {cat:"40 oz Bottles",size:40,name:"Captain Morgan White",tare:22.1},
+  {cat:"40 oz Bottles",size:40,name:"Captain Morgan Spice Rum",tare:21.8},
+  {cat:"40 oz Bottles",size:40,name:"Absolut",tare:24.8},
+  {cat:"40 oz Bottles",size:40,name:"Smirnoff",tare:21.5},
+  {cat:"40 oz Bottles",size:40,name:"Stolichnaya",tare:24.5},
+  {cat:"40 oz Bottles",size:40,name:"Jose Cuervo",tare:24.5},
+  {cat:"40 oz Bottles",size:40,name:"Dewars",tare:20.2},
+  {cat:"Rum",size:26,name:"Captain Morgan Dark",tare:14.4},
+  {cat:"Rum",size:26,name:"Captain Morgan White",tare:14.8},
+  {cat:"Rum",size:26,name:"Captain Morgan Spice Rum",tare:14.5},
+  {cat:"Rum",size:26,name:"Bacardi White",tare:15.5},
+  {cat:"Rum",size:26,name:"Appleton Reserve",tare:18.4},
+  {cat:"Rum",size:26,name:"Kraken Black Spiced",tare:25.8},
+  {cat:"Rum",size:26,name:"Malibu",tare:17.8},
+  {cat:"Gin",size:26,name:"Hendricks",tare:19.5},
+  {cat:"Gin",size:26,name:"Tanqueray",tare:19.1},
+  {cat:"Gin",size:26,name:"Bombay",tare:20.3},
+  {cat:"Gin",size:26,name:"Gordon's",tare:19.8},
+  {cat:"Gin",size:26,name:"Beefeater",tare:16},
+  {cat:"Irish Whiskey",size:26,name:"Jameson",tare:17.6},
+  {cat:"Irish Whiskey",size:26,name:"Bushmills",tare:18.6},
+  {cat:"Liqueur",size:26,name:"Bols Blue",tare:16.8},
+  {cat:"Liqueur",size:26,name:"Sour Puss Raspberry",tare:22.1},
+  {cat:"Liqueur",size:26,name:"Sour Puss Apple",tare:22.1},
+  {cat:"Liqueur",size:26,name:"Campari",tare:19.5},
+  {cat:"Liqueur",size:26,name:"Jagermeister",tare:23.1},
+  {cat:"Liqueur",size:26,name:"Peach Schnapps",tare:19.1},
+  {cat:"Liqueur",size:26,name:"Disaronno",tare:28.7},
+  {cat:"Liqueur",size:26,name:"Baileys",tare:17.8},
+  {cat:"Liqueur",size:26,name:"Kahlua",tare:18.4},
+  {cat:"Liqueur",size:26,name:"Triple Sec",tare:23.1},
+  {cat:"Liqueur",size:26,name:"St. Germain",tare:30.8},
+  {cat:"Liqueur",size:26,name:"Sambucca White",tare:16.7},
+  {cat:"Liqueur",size:26,name:"Grand Marnier",tare:23.2},
+  {cat:"Liqueur",size:26,name:"Butter Ripples",tare:15.7},
+  {cat:"Liqueur",size:26,name:"Midori",tare:22},
+  {cat:"Liqueur",size:26,name:"Southern Comfort",tare:17.3},
+  {cat:"Liqueur",size:26,name:"Cointreau",tare:23.5},
+  {cat:"Rye Whiskey",size:26,name:"Crown Royal",tare:19.9},
+  {cat:"Rye Whiskey",size:26,name:"Fireball",tare:21},
+  {cat:"Rye Whiskey",size:26,name:"Cherry Brandy",tare:22.6},
+  {cat:"Rye Whiskey",size:26,name:"Peppermint Schnapps",tare:22.6},
+  {cat:"Rye Whiskey",size:26,name:"Frangelico",tare:25.4},
+  {cat:"Rye Whiskey",size:26,name:"Aperol",tare:21.6},
+  {cat:"Rye Whiskey",size:26,name:"Cacao White",tare:15.7},
+  {cat:"Scotch",size:26,name:"Glenlivet Founders Reserve",tare:19.3},
+  {cat:"Scotch",size:26,name:"Glenfiddich",tare:18.1},
+  {cat:"Scotch",size:26,name:"Dewars",tare:11.9},
+  {cat:"Scotch",size:26,name:"Johnnie Walker Black",tare:13.2},
+  {cat:"Scotch",size:26,name:"Courvoisier VSOP",tare:24},
+  {cat:"Tequila",size:26,name:"Patron Silver",tare:25.5},
+  {cat:"Tequila",size:26,name:"Jose Cuervo",tare:17.8},
+  {cat:"Tequila",size:26,name:"1800 Silver Tequila",tare:25.6},
+  {cat:"Tequila",size:26,name:"1800 Silver Tequila Coco",tare:26.7},
+  {cat:"Vermouth",size:32,name:"Martini Dry",tare:20.6},
+  {cat:"Vermouth",size:32,name:"Martini Sweet",tare:20.6},
+  {cat:"Vodka",size:26,name:"Grey Goose",tare:20.5},
+  {cat:"Vodka",size:26,name:"JD Shore Vodka",tare:14.2},
+  {cat:"Vodka",size:26,name:"Smirnoff",tare:15.7},
+  {cat:"Vodka",size:26,name:"Absolut Citron",tare:19},
+  {cat:"Vodka",size:26,name:"Smirnoff Apple",tare:16.8},
+  {cat:"Vodka",size:26,name:"Tito's",tare:13.1},
+  {cat:"Vodka",size:26,name:"Stolichnaya",tare:16},
+  {cat:"Vodka",size:26,name:"Absolut",tare:17.7},
+  {cat:"Vodka",size:26,name:"Ketel One",tare:22.3},
+  {cat:"Vodka",size:40,name:"Stolichnaya",tare:24.5},
+  {cat:"Vodka",size:40,name:"Absolut",tare:24.8},
+  {cat:"Vodka",size:40,name:"Smirnoff",tare:21.5},
+];
+
+let bottles=[];
+let nextId=1;
+let collapsedCats={};
+let modalCallback=null;
+const STORAGE_KEY='bar_inventory_v3';
+
+function saveToStorage(){
+  const data={ bottles, nextId, collapsedCats, savedAt:new Date().toISOString() };
+  try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(data)); updateLastSaved(data.savedAt); }
+  catch(e){ showToast('⚠️ Could not save — storage may be full or blocked.',4000); }
+}
+function loadFromStorage(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const data=JSON.parse(raw);
+    bottles=data.bottles||[];
+    nextId=data.nextId||bottles.length+1;
+    collapsedCats=data.collapsedCats||{};
+    updateLastSaved(data.savedAt);
+    return true;
+  }catch(e){ return false; }
+}
+function updateLastSaved(iso){
+  const el=document.getElementById('last-saved-label');
+  if(!iso){el.textContent='No data saved yet';return;}
+  const d=new Date(iso);
+  el.textContent='Last saved: '+d.toLocaleDateString()+' at '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+
+let toastTimer=null;
+function showToast(msg,duration=2500){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),duration);
+}
+function hideToast(){
+  const t=document.getElementById('toast');
+  t.classList.remove('show');
+  clearTimeout(toastTimer);
+}
+
+function openModal(title,body,confirmLabel,cb,danger=true){
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').textContent=body;
+  const btn=document.getElementById('modal-confirm');
+  btn.textContent=confirmLabel;
+  btn.className='btn '+(danger?'btn-danger':'btn-amber');
+  modalCallback=cb;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal(){ document.getElementById('modal-overlay').classList.remove('open'); modalCallback=null; }
+document.getElementById('modal-confirm').addEventListener('click',()=>{ if(modalCallback) modalCallback(); closeModal(); });
+document.getElementById('modal-overlay').addEventListener('click',function(e){ if(e.target===this) closeModal(); });
+
+function onSearch(){
+  const val=document.getElementById('search').value;
+  document.getElementById('search-clear').classList.toggle('visible',val.length>0);
+  render();
+}
+function clearSearch(){ document.getElementById('search').value=''; document.getElementById('search-clear').classList.remove('visible'); render(); }
+
+function toggleAdd(){
+  const p=document.getElementById('add-panel');
+  const isOpen=p.classList.contains('open');
+  p.classList.toggle('open');
+  if(!isOpen) document.getElementById('inp-name').focus();
+}
+function addBottle(){
+  const name=document.getElementById('inp-name').value.trim();
+  const size=parseFloat(document.getElementById('inp-size').value);
+  const tare=parseFloat(document.getElementById('inp-tare').value);
+  const cat=document.getElementById('inp-cat').value;
+  if(!name||!size||isNaN(tare)){showToast('⚠️ Please fill in all fields.');return;}
+  bottles.push({id:nextId++,name,size,tare,cat,
+    w_bar:null, w_floor:null, f_bar:0, f_floor:0});
+  document.getElementById('inp-name').value='';
+  document.getElementById('inp-size').value='';
+  document.getElementById('inp-tare').value='';
+  document.getElementById('add-panel').classList.remove('open');
+  saveToStorage(); render(); showToast('✅ '+name+' added to both locations!');
+}
+function removeBottle(id){
+  const b=bottles.find(b=>b.id===id);
+  openModal('Remove bottle?','Remove "'+b.name+'" from both locations? This cannot be undone.','Remove',()=>{
+    bottles=bottles.filter(b=>b.id!==id); saveToStorage(); render(); showToast('🗑 Removed.');
+  });
+}
+function confirmReset(){
+  openModal('Start new count?','This clears all weights and full counts for BOTH locations, keeping your bottle list. Use at the start of each inventory count.','Clear & start fresh',()=>{
+    bottles.forEach(b=>{ b.w_bar=null; b.w_floor=null; b.f_bar=0; b.f_floor=0; });
+    saveToStorage(); render(); showToast('🔄 All counts cleared for both locations!');
+  },false);
+}
+
+let warnTimer=null;
+function updateWeight(id,loc,val){
+  const b=bottles.find(b=>b.id===id);
+  if(b){
+    const parsed=val===''?null:parseFloat(val);
+    b['w_'+loc]=parsed;
+
+    // Decide if the current value is out of range
+    let warning=null;
+    if(parsed!==null&&!isNaN(parsed)){
+      if(parsed>0&&parsed<b.tare) warning='⚠️ '+parsed+' oz is below empty weight ('+b.tare+' oz). Check reading.';
+      else if(parsed>b.tare+b.size+1) warning='⚠️ '+parsed+' oz is above full ('+(b.tare+b.size).toFixed(1)+' oz). Check reading.';
+    }
+
+    clearTimeout(warnTimer);
+    if(warning){
+      // Wait until typing pauses (700ms) before warning, so mid-typing digits don't trigger it
+      warnTimer=setTimeout(()=>showToast(warning,2500),700);
+    } else {
+      // Value is now valid (or cleared) — dismiss any warning immediately
+      hideToast();
+    }
+  }
+  updateCardVisual(id); updateSummary(); saveToStorage();
+}
+function changeFullQty(id,loc,delta){
+  const b=bottles.find(b=>b.id===id);
+  if(!b) return;
+  b['f_'+loc]=Math.max(0,(b['f_'+loc]||0)+delta);
+  updateCardVisual(id); updateSummary(); saveToStorage();
+}
+
+function calcRatio(b,loc){
+  const w=b['w_'+loc];
+  if(w===null||isNaN(w)) return null;
+  return Math.min(1,Math.max(0,(w-b.tare)/b.size));
+}
+function calcTotal(b,loc){
+  const r=calcRatio(b,loc);
+  return (b['f_'+loc]||0)+(r!==null?r:0);
+}
+function getLevelColor(r){ if(r>0.6) return '#3ecf8e'; if(r>0.35) return '#f5a623'; return '#f26464'; }
+function getLevelText(r){
+  if(r===null) return{num:'—',word:''};
+  if(r>=0.98) return{num:'1.00',word:'Full'};
+  if(r>=0.73) return{num:r.toFixed(2),word:'¾'};
+  if(r>=0.48) return{num:r.toFixed(2),word:'Half'};
+  if(r>=0.23) return{num:r.toFixed(2),word:'¼'};
+  if(r>0.01) return{num:r.toFixed(2),word:'Low'};
+  return{num:'0.00',word:'Empty'};
+}
+
+function updateCardVisual(id){
+  const b=bottles.find(b=>b.id===id);
+  if(!b) return;
+  LOCS.forEach(L=>{
+    const loc=L.key;
+    const r=calcRatio(b,loc);
+    const t=getLevelText(r);
+    const fnum=document.getElementById(loc+'-fnum-'+id);
+    const num=document.getElementById(loc+'-fnumr-'+id);
+    const word=document.getElementById(loc+'-fword-'+id);
+    const badge=document.getElementById(loc+'-total-'+id);
+    const inp=document.getElementById(loc+'-winp-'+id);
+    if(fnum) fnum.textContent=b['f_'+loc]||0;
+    if(num) num.textContent=t.num;
+    if(num) num.style.color=(r!==null?getLevelColor(r):'var(--text3)');
+    if(word) word.textContent=t.word;
+    if(inp) inp.style.borderColor=(b['w_'+loc]!==null?'rgba(79,142,247,0.4)':'');
+    if(badge){
+      const total=calcTotal(b,loc);
+      const hasData=(b['w_'+loc]!==null)||(b['f_'+loc]>0);
+      if(hasData&&total>0){ badge.classList.remove('hide'); badge.textContent=total.toFixed(2)+' btl'; }
+      else badge.classList.add('hide');
+    }
+  });
+}
+
+function updateSummary(){
+  LOCS.forEach(L=>{
+    const loc=L.key;
+    const withW=bottles.filter(b=>b['w_'+loc]!==null);
+    const ratios=withW.map(b=>calcRatio(b,loc)).filter(r=>r!==null);
+    const lowEmpty=ratios.filter(r=>r<0.25).length;
+    document.getElementById(loc+'-weighed').textContent=withW.length;
+    document.getElementById(loc+'-low').textContent=lowEmpty;
+    document.getElementById(loc+'-full').textContent=bottles.reduce((a,b)=>a+(b['f_'+loc]||0),0);
+  });
+}
+
+// ── SHOPPING / REORDER LIST ──
+function getLowBottles(){
+  // A bottle qualifies if EITHER location is weighed and at/below 25%
+  return bottles.map(b=>{
+    const rb=calcRatio(b,'bar');
+    const rf=calcRatio(b,'floor');
+    const barLow=(rb!==null&&rb<0.25);
+    const floorLow=(rf!==null&&rf<0.25);
+    return {b,rb,rf,barLow,floorLow,low:(barLow||floorLow)};
+  }).filter(x=>x.low);
+}
+
+function showShoppingList(){
+  const low=getLowBottles();
+  const list=document.getElementById('shop-list');
+  if(low.length===0){
+    list.innerHTML='<div class="shop-empty">✅ Nothing low — all stocked up!</div>';
+  } else {
+    // Order by lowest combined ratio first
+    low.sort((a,b)=>{
+      const am=Math.min(a.rb===null?9:a.rb, a.rf===null?9:a.rf);
+      const bm=Math.min(b.rb===null?9:b.rb, b.rf===null?9:b.rf);
+      return am-bm;
+    });
+    list.innerHTML=low.map(x=>{
+      const tags=[];
+      if(x.barLow) tags.push('<span class="shop-tag bar">Bar '+x.rb.toFixed(2)+'</span>');
+      if(x.floorLow) tags.push('<span class="shop-tag floor">3F '+x.rf.toFixed(2)+'</span>');
+      return '<div class="shop-row"><div><div class="shop-name">'+x.b.name+'</div><div class="shop-cat">'+x.b.cat+' · '+x.b.size+' oz</div></div><div class="shop-levels">'+tags.join('')+'</div></div>';
+    }).join('');
+  }
+  document.getElementById('shop-overlay').classList.add('open');
+}
+function closeShopModal(){ document.getElementById('shop-overlay').classList.remove('open'); }
+function copyShoppingList(){
+  const low=getLowBottles();
+  if(low.length===0){ showToast('Nothing low to copy.'); return; }
+  const lines=['REORDER LIST — '+new Date().toLocaleDateString()];
+  low.forEach(x=>{
+    const where=[];
+    if(x.barLow) where.push('Bar '+x.rb.toFixed(2));
+    if(x.floorLow) where.push('3rd Floor '+x.rf.toFixed(2));
+    lines.push('• '+x.b.name+' ('+x.b.size+'oz) — '+where.join(', '));
+  });
+  const text=lines.join('\n');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>showToast('📋 Copied reorder list!'),()=>showToast('Could not copy.'));
+  } else {
+    // Fallback
+    const ta=document.createElement('textarea');
+    ta.value=text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); showToast('📋 Copied reorder list!'); }
+    catch(e){ showToast('Could not copy.'); }
+    document.body.removeChild(ta);
+  }
+}
+document.getElementById('shop-overlay').addEventListener('click',function(e){ if(e.target===this) closeShopModal(); });
+
+function exportCSV(){
+  const rows=[['Category','Name','Size (oz)','Empty (oz)',
+    'Bar Weight','Bar Fill','Bar Full','Bar Total',
+    '3rd Floor Weight','3rd Floor Fill','3rd Floor Full','3rd Floor Total']];
+  bottles.forEach(b=>{
+    const rb=calcRatio(b,'bar'), rf=calcRatio(b,'floor');
+    rows.push([b.cat,b.name,b.size,b.tare,
+      b.w_bar??'', rb!==null?rb.toFixed(2):'', b.f_bar||0, (b.w_bar!==null||b.f_bar>0)?calcTotal(b,'bar').toFixed(2):'',
+      b.w_floor??'', rf!==null?rf.toFixed(2):'', b.f_floor||0, (b.w_floor!==null||b.f_floor>0)?calcTotal(b,'floor').toFixed(2):''
+    ]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='bar-inventory-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('📊 CSV exported (both locations)!');
+}
+
+function toggleCat(cat){
+  collapsedCats[cat]=!collapsedCats[cat];
+  const s=cat.replace(/\s+/g,'_');
+  document.getElementById('div-'+s)?.classList.toggle('collapsed',!!collapsedCats[cat]);
+  document.getElementById('grid-'+s)?.classList.toggle('collapsed',!!collapsedCats[cat]);
+  saveToStorage();
+}
+function setAllCollapsed(c){ CAT_ORDER.forEach(cat=>{collapsedCats[cat]=c;}); saveToStorage(); render(); }
+
+function locCell(b,L){
+  const loc=L.key;
+  const r=calcRatio(b,loc);
+  const t=getLevelText(r);
+  const fq=b['f_'+loc]||0;
+  const total=calcTotal(b,loc);
+  const hasData=(b['w_'+loc]!==null)||(fq>0);
+  const col=r!==null?getLevelColor(r):'var(--text3)';
+  return `
+    <div class="loc-cell ${loc}">
+      <div class="loc-cell-head">
+        <div class="loc-cell-name"><span class="loc-dot ${loc}"></span>${L.label}</div>
+        <span id="${loc}-total-${b.id}" class="loc-total-badge ${loc} ${hasData&&total>0?'':'hide'}">${total.toFixed(2)} btl</span>
+      </div>
+      <div class="cell-inputs">
+        <div class="input-group">
+          <label>Weight (oz)</label>
+          <input class="weight" type="number" min="0" step="0.1" id="${loc}-winp-${b.id}"
+            placeholder="${b.tare}–${(b.tare+b.size).toFixed(1)}"
+            value="${b['w_'+loc]!==null?b['w_'+loc]:''}"
+            style="${b['w_'+loc]!==null?'border-color:rgba(79,142,247,0.4)':''}"
+            oninput="updateWeight(${b.id},'${loc}',this.value)" />
+        </div>
+        <div class="fill-readout">
+          <span class="fill-num" id="${loc}-fnumr-${b.id}" style="color:${col}">${t.num}</span>
+          <span class="fill-word" id="${loc}-fword-${b.id}">${t.word}</span>
+        </div>
+        <div class="input-group">
+          <label>Full</label>
+          <div class="full-counter">
+            <button class="qty-btn" onclick="changeFullQty(${b.id},'${loc}',-1)">−</button>
+            <span class="qty-num" id="${loc}-fnum-${b.id}">${fq}</span>
+            <button class="qty-btn" onclick="changeFullQty(${b.id},'${loc}',1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function render(){
+  const search=document.getElementById('search').value.toLowerCase();
+  const catF=document.getElementById('filter-cat').value;
+  const filtered=bottles.filter(b=>{
+    if(search&&!b.name.toLowerCase().includes(search)&&!b.cat.toLowerCase().includes(search)) return false;
+    if(catF&&b.cat!==catF) return false;
+    return true;
+  });
+  const usedCats=CAT_ORDER.filter(c=>filtered.some(b=>b.cat===c));
+  const container=document.getElementById('bottles-container');
+  container.innerHTML='';
+  if(filtered.length===0){
+    container.innerHTML='<div class="empty"><div class="empty-icon">🔍</div>No bottles match your filters.</div>';
+    updateSummary();return;
+  }
+  usedCats.forEach(cat=>{
+    const catBottles=filtered.filter(b=>b.cat===cat);
+    const s=cat.replace(/\s+/g,'_');
+    const isCol=!!collapsedCats[cat];
+    const divider=document.createElement('div');
+    divider.className='section-divider'+(isCol?' collapsed':'');
+    divider.id='div-'+s;
+    divider.onclick=()=>toggleCat(cat);
+    divider.innerHTML=`<span>Liquor – ${cat}</span><span class="right"><span class="count">(${catBottles.length})</span><span class="chevron">▾</span></span>`;
+    container.appendChild(divider);
+    const grid=document.createElement('div');
+    grid.className='bottles-grid'+(isCol?' collapsed':'');
+    grid.id='grid-'+s;
+    catBottles.forEach(b=>{
+      const card=document.createElement('div');
+      card.className='bottle-card';
+      card.id='card-'+b.id;
+      card.innerHTML=`
+        <div class="card-head">
+          <div>
+            <div class="bottle-name">${b.name}</div>
+            <div class="bottle-meta">${b.size} oz · Empty: ${b.tare} oz · Full = ${(b.size+b.tare).toFixed(1)} oz</div>
+          </div>
+          <button class="del-btn" onclick="removeBottle(${b.id})" title="Remove">✕</button>
+        </div>
+        <div class="loc-row">
+          ${locCell(b,LOCS[0])}
+          ${locCell(b,LOCS[1])}
+        </div>`;
+      grid.appendChild(card);
+    });
+    container.appendChild(grid);
+  });
+  updateSummary();
+}
+
+function init(){
+  const loaded=loadFromStorage();
+  if(!loaded){
+    bottles=PRELOADED.map((b,i)=>({...b,id:i+1,w_bar:null,w_floor:null,f_bar:0,f_floor:0}));
+    nextId=bottles.length+1;
+  }
+  render();
+  window.addEventListener('scroll',()=>{ document.getElementById('scroll-top').classList.toggle('show',window.scrollY>400); });
+  ['inp-name','inp-size','inp-tare'].forEach(idn=>{
+    document.getElementById(idn).addEventListener('keydown',e=>{ if(e.key==='Enter') addBottle(); });
+  });
+}
+init();
+</script>
+</body>
+</html>
